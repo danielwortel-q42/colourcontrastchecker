@@ -15,7 +15,7 @@
   .topbar h1 { font-weight: 800; line-height: 1.1; font-size: clamp(1.3rem, 2.5vw, 2rem); }
   .topbar-right { display: flex; flex-direction: column; gap: 6px; }
 
-  .input-area { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 8px 12px; min-height: 44px; }
+  .input-area { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 8px 12px; min-height: 44px; }
   .input-area input { background: none; border: none; outline: none; color: #fff; font-size: 13px; flex: 1; min-width: 160px; }
   .input-area input::placeholder { color: var(--muted); transition: opacity 0.1s; }
   .input-area input:focus::placeholder { opacity: 0; }
@@ -23,9 +23,11 @@
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 6px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
   .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .chip-x { cursor: pointer; font-size: 13px; line-height: 1; opacity: 0.65; margin-left: 2px; }
-  .chip-x:hover { opacity: 1; }
+  #chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
   .action-bar { display: flex; gap: 8px; align-items: center; min-height: 28px; }
+  .btn-clear  { display: none; background: none; border: 1px solid #333; color: var(--muted); padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-clear:hover { border-color: #f87171; color: #f87171; }
   .btn-undo   { display: none; background: none; border: 1px solid #333; color: var(--muted); padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .btn-undo:hover { border-color: #888; color: #fff; }
   .btn-export { display: none; background: #3b82f6; border: none; color: #fff; padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -112,6 +114,7 @@
         <input id="colorInput" type="text" placeholder="e.g. #FF885A or 111111, 307362, a7eedc" />
       </div>
       <div class="action-bar">
+        <button class="btn-clear"  id="btnClear">&#10005; Clear</button>
         <button class="btn-undo"   id="btnUndo">&#8617; Undo</button>
         <button class="btn-export" id="btnExport">&#8595; Export PDF</button>
       </div>
@@ -170,6 +173,7 @@
   const elMatrix    = $('matrix');
   const elMatrixWrap= $('matrixWrap');
   const elEmptyWrap = $('emptyWrap');
+  const elBtnClear  = $('btnClear');
   const elBtnUndo   = $('btnUndo');
   const elBtnExport = $('btnExport');
   const elModalBg   = $('modalBg');
@@ -380,8 +384,9 @@
 
   /* ── Actions bar ── */
   const renderActions = () => {
-    elBtnUndo.style.display   = historyStack.length   ? 'inline-block' : 'none';
-    elBtnExport.style.display = colours.length >= 2   ? 'inline-block' : 'none';
+    elBtnClear.style.display  = colours.length >= 1 ? 'inline-block' : 'none';
+    elBtnUndo.style.display   = historyStack.length ? 'inline-block' : 'none';
+    elBtnExport.style.display = colours.length >= 2 ? 'inline-block' : 'none';
   };
 
   /* ── Full render ── */
@@ -412,6 +417,13 @@
       if (!didAdd) { snapshot(); didAdd = true; }
       colours.push(upper);
     });
+    render();
+  });
+
+  elBtnClear.addEventListener('click', () => {
+    colours = [];
+    disabled = new Set();
+    historyStack = [];
     render();
   });
 
