@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colour Contrast Checker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root { --muted: #9ca3af; --bg: #111; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+  .container { max-width: 1440px; margin: 0 auto; padding: 28px 24px; }
+
+  .topbar { display: grid; grid-template-columns: 15fr 85fr; gap: 24px; align-items: start; margin-bottom: 24px; }
+  .topbar h1 { font-weight: 800; line-height: 1.1; font-size: clamp(1.3rem, 2.5vw, 2rem); }
+  .topbar-right { display: flex; flex-direction: column; gap: 6px; }
+
+  .input-area { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 8px 12px; min-height: 44px; }
+  .input-area input { background: none; border: none; outline: none; color: #fff; font-size: 13px; flex: 1; min-width: 160px; }
+  .input-area input::placeholder { color: var(--muted); transition: opacity 0.1s; }
+  .input-area input:focus::placeholder { opacity: 0; }
+
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 6px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+  .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .chip-x { cursor: pointer; font-size: 13px; line-height: 1; opacity: 0.65; margin-left: 2px; }
+  .chip-x:hover { opacity: 1; }
+
+  .action-bar { display: flex; gap: 8px; align-items: center; min-height: 28px; }
+  .btn-undo   { display: none; background: none; border: 1px solid #333; color: var(--muted); padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-undo:hover { border-color: #888; color: #fff; }
+  .btn-export { display: none; background: #3b82f6; border: none; color: #fff; padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-export:hover { background: #2563eb; }
+
+  .empty { text-align: center; padding: 80px 20px; max-width: 480px; margin: 0 auto; }
+  .empty .e-emoji { font-size: 48px; margin-bottom: 20px; }
+  .empty h2 { font-size: 1.8rem; font-weight: 800; margin-bottom: 12px; line-height: 1.2; }
+  .empty p { font-size: 16px; color: var(--muted); line-height: 1.7; }
+  .empty .e-hint { margin-top: 20px; display: inline-block; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 10px 18px; font-size: 15px; color: var(--muted); }
+  .empty .e-hint code { color: #4ade80; font-family: monospace; }
+
+  .matrix-wrap { margin-top: 20px; width: 100%; overflow-x: auto; display: none; }
+  .matrix { display: grid; gap: 5px; }
+  .col-hdr { display: flex; align-items: center; justify-content: center; border-radius: 8px; height: 36px; font-size: 11px; font-weight: 700; border: 1px solid #2a2a2a; }
+  .row-hdr { display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 11px; font-weight: 700; border: 1px solid #2a2a2a; }
+
+  .tile { position: relative; border-radius: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #2a2a2a; cursor: pointer; transition: transform .15s, box-shadow .15s; }
+  .tile:hover { transform: scale(1.04); box-shadow: 0 6px 24px rgba(0,0,0,.6); z-index: 2; }
+  .tile.blank { background: transparent !important; border: none; cursor: default; pointer-events: none; }
+  .tile.off::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,.55); border-radius: 11px; pointer-events: none; }
+
+  .notch { position: absolute; top: 0; right: 0; background: var(--bg); border-radius: 0 11px 0 9px; padding: 5px 8px 6px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; white-space: nowrap; z-index: 1; }
+  .notch-badges { display: flex; gap: 5px; }
+  .nbadge { font-size: 10px; font-weight: 700; }
+  .nbadge.pass { color: #4ade80; }
+  .nbadge.fail { color: #f87171; }
+  .notch-ratio { font-size: 10px; font-weight: 700; color: #fff; line-height: 1; }
+
+  .aa-lg { font-size: clamp(24px, 4vw, 40px); font-weight: 800; line-height: 1; }
+  .aa-sm { font-size: clamp(12px, 1.8vw, 17px); font-weight: 400; margin-top: 2px; }
+
+  .tile-ov { position: absolute; inset: 0; background: rgba(0,0,0,.75); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 11px; z-index: 2; }
+  .tile:hover .tile-ov { display: flex; }
+  .ov-btn { padding: 6px 18px; border-radius: 7px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .ov-btn:hover { opacity: .85; }
+  .ov-dis, .ov-ena { background: #fff; color: #111; }
+  .ov-imp { background: #3b82f6; color: #fff; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #1c1c1c; border: 1px solid #2e2e2e; border-radius: 18px; padding: 24px; width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
+  .modal-hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  .modal-hdr h2 { font-size: 17px; font-weight: 800; }
+  .modal-x { background: none; border: none; color: #555; font-size: 22px; cursor: pointer; line-height: 1; }
+  .modal-x:hover { color: #fff; }
+  .modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .modal-prev { border-radius: 10px; padding: 18px; text-align: center; font-size: 26px; font-weight: 800; margin-bottom: 16px; }
+  .m-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .m-tab { padding: 6px 14px; border-radius: 7px; border: 2px solid #2e2e2e; background: none; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+  .m-tab.on { border-color: #3b82f6; color: #fff; background: #1e3a5f; }
+  .sugg-group { margin-bottom: 16px; }
+  .sugg-group-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .sugg-group-lbl.aa  { color: #60a5fa; }
+  .sugg-group-lbl.aaa { color: #a78bfa; }
+  .m-suggs { display: flex; gap: 9px; }
+  .m-sugg { flex: 1; border: 2px solid #2e2e2e; border-radius: 10px; padding: 10px; cursor: pointer; text-align: center; transition: border-color .15s; }
+  .m-sugg:hover, .m-sugg.picked { border-color: #3b82f6; }
+  .ms-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 7px; }
+  .ms-swatch { width: 100%; height: 32px; border-radius: 6px; margin-bottom: 7px; }
+  .ms-hex { font-size: 11px; font-weight: 700; }
+  .ms-ratio { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .ms-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 20px; margin-top: 5px; }
+  .ms-badge.aa  { background: #1e3a5f; color: #60a5fa; }
+  .ms-badge.aaa { background: #2e1a5e; color: #a78bfa; }
+  .ms-none { font-size: 12px; color: var(--muted); padding: 10px 0; }
+  .modal-ftr { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .m-cancel { background: #2a2a2a; border: none; color: #aaa; padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .m-update { background: #3b82f6; border: none; color: #fff; padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .m-update:disabled { opacity: .35; cursor: not-allowed; }
+
+  @media (max-width: 700px) {
+    .topbar { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <div><h1>Colour<br>Contrast<br>Checker</h1></div>
+    <div class="topbar-right">
+      <div class="input-area">
+        <div id="chips"></div>
+        <input id="colorInput" type="text" placeholder="e.g. #FF885A or 111111, 307362, a7eedc" />
+      </div>
+      <div class="action-bar">
+        <button class="btn-undo"   id="btnUndo">&#8617; Undo</button>
+        <button class="btn-export" id="btnExport">&#8595; Export PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="emptyWrap" class="empty">
+    <div class="e-emoji" id="eEmoji">🎨</div>
+    <h2 id="eTitle">Make the web readable<br>for everyone.</h2>
+    <p id="eDesc">Add your brand colours above and instantly see which combinations pass WCAG accessibility standards — and which ones are quietly failing the people who need them most.</p>
+    <div class="e-hint" id="eHint">Type a HEX colour like <code>#FF885A</code> and press <code>Enter</code> to begin</div>
+  </div>
+
+  <div class="matrix-wrap" id="matrixWrap">
+    <div class="matrix" id="matrix"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h2>Improve Combination</h2>
+      <button class="modal-x" id="modalX">&times;</button>
+    </div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="modal-prev" id="modalPrev">Aa</div>
+    <div class="m-tabs">
+      <button class="m-tab on" data-t="fg">Text colour</button>
+      <button class="m-tab"    data-t="bg">Background colour</button>
+    </div>
+    <div id="mSuggWrap"></div>
+    <div class="modal-ftr">
+      <button class="m-cancel" id="mCancel">Cancel</button>
+      <button class="m-update" id="mUpdate" disabled>Update Colour</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  /* ── Constants ── */
+  const AA_THRESHOLD  = 4.5;
+  const AAA_THRESHOLD = 7;
+  const TILE_MIN      = 125;
+  const TILE_MAX      = 999;
+  const ROW_HDR_MIN   = 60;
+  const ROW_HDR_MAX   = 90;
+  const ROW_HDR_PCT   = 0.08;
+  const GRID_GAP      = 5;
+  const SUGGEST_STEPS = 70;
+
+  /* ── DOM refs ── */
+  const $ = id => document.getElementById(id);
+  const elChips     = $('chips');
+  const elInput     = $('colorInput');
+  const elMatrix    = $('matrix');
+  const elMatrixWrap= $('matrixWrap');
+  const elEmptyWrap = $('emptyWrap');
+  const elBtnUndo   = $('btnUndo');
+  const elBtnExport = $('btnExport');
+  const elModalBg   = $('modalBg');
+  const elModalSub  = $('modalSub');
+  const elModalPrev = $('modalPrev');
+  const elSuggWrap  = $('mSuggWrap');
+  const elBtnUpdate = $('mUpdate');
+  const elEEmoji    = $('eEmoji');
+  const elETitle    = $('eTitle');
+  const elEDesc     = $('eDesc');
+  const elEHint     = $('eHint');
+
+  /* ── State ── */
+  let colours = [];
+  let history = [];
+  let disabled = new Set();
+  let modal = { fgIndex: 0, bgIndex: 0, target: 'fg', picked: null };
+  let resizeTimer = null;
+
+  /* ── Colour utilities ── */
+  const hexToRgb = hex => {
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const n = parseInt(hex, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+
+  const rgbToHex = (r, g, b) =>
+    '#' + [r, g, b].map(v =>
+      Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')
+    ).join('').toUpperCase();
+
+  const relativeLuminance = hex =>
+    hexToRgb(hex).reduce((acc, channel, i) => {
+      let v = channel / 255;
+      v = v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      return acc + v * [0.2126, 0.7152, 0.0722][i];
+    }, 0);
+
+  const contrastRatio = (hexA, hexB) => {
+    const la = relativeLuminance(hexA), lb = relativeLuminance(hexB);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+
+  const readableInk = hex => relativeLuminance(hex) > 0.179 ? '#111' : '#fff';
+
+  const tileKey = (fi, bi) => `${fi}-${bi}`;
+
+  /* ── Suggestion engine ── */
+  const findSuggestion = (fg, bg, direction, target, minRatio) => {
+    const base = hexToRgb(target === 'fg' ? fg : bg);
+    const toward = direction === 'lighter' ? 255 : 0;
+    for (let step = 1; step <= SUGGEST_STEPS; step++) {
+      const factor = step / SUGGEST_STEPS;
+      const candidate = rgbToHex(
+        base[0] + (toward - base[0]) * factor,
+        base[1] + (toward - base[1]) * factor,
+        base[2] + (toward - base[2]) * factor
+      );
+      const ratio = target === 'fg' ? contrastRatio(candidate, bg) : contrastRatio(fg, candidate);
+      if (ratio >= minRatio) return { hex: candidate, ratio };
+    }
+    return null;
+  };
+
+  /* ── History ── */
+  const snapshot = () => history.push({ colours: [...colours], disabled: new Set(disabled) });
+
+  /* ── Chips ── */
+  const renderChips = () => {
+    elChips.innerHTML = colours.map((colour, i) => {
+      const ink = readableInk(colour);
+      const dotOpacity = ink === '#fff' ? 'rgba(255,255,255,.3)' : 'rgba(0,0,0,.2)';
+      return `<span class="chip" style="background:${colour};color:${ink}">
+        <span class="chip-dot" style="background:${dotOpacity}"></span>
+        ${colour}
+        <span class="chip-x" data-i="${i}">\u00d7</span>
+      </span>`;
+    }).join('');
+
+    elChips.querySelectorAll('.chip-x').forEach(el =>
+      el.addEventListener('click', () => {
+        snapshot();
+        colours.splice(+el.dataset.i, 1);
+        render();
+      })
+    );
+  };
+
+  /* ── Empty state ── */
+  const showEmptyState = count => {
+    elMatrixWrap.style.display = 'none';
+    elEmptyWrap.style.display  = 'block';
+    if (count === 0) {
+      elEEmoji.textContent = '🎨';
+      elETitle.innerHTML   = 'Make the web readable<br>for everyone.';
+      elEDesc.textContent  = 'Add your brand colours above and instantly see which combinations pass WCAG accessibility standards — and which ones are quietly failing the people who need them most.';
+      elEHint.innerHTML    = 'Type a HEX colour like <code>#FF885A</code> and press <code>Enter</code> to begin';
+    } else {
+      elEEmoji.textContent = '👀';
+      elETitle.innerHTML   = 'You\u2019re almost there\u2026';
+      elEDesc.textContent  = 'We need at least two colours to start checking accessibility. Go on, add one more — the web is counting on you.';
+      elEHint.innerHTML    = 'Add another HEX colour and press <code>Enter</code>';
+    }
+  };
+
+  /* ── Matrix ── */
+  const buildTile = (fi, bi, tileSize) => {
+    const fg    = colours[fi], bg = colours[bi];
+    const key   = tileKey(fi, bi);
+    const ratio = contrastRatio(fg, bg);
+    const passAA  = ratio >= AA_THRESHOLD;
+    const passAAA = ratio >= AAA_THRESHOLD;
+    const isOff   = disabled.has(key);
+
+    const overlayButtons = isOff
+      ? `<button class="ov-btn ov-ena" data-fi="${fi}" data-bi="${bi}">Enable</button>`
+      : `<button class="ov-btn ov-dis" data-fi="${fi}" data-bi="${bi}">Disable</button>
+         <button class="ov-btn ov-imp" data-fi="${fi}" data-bi="${bi}">Improve</button>`;
+
+    return `<div class="tile${isOff ? ' off' : ''}" style="background:${bg};color:${fg};height:${tileSize}px" data-fi="${fi}" data-bi="${bi}">
+      <div class="notch">
+        <div class="notch-badges">
+          <span class="nbadge ${passAA  ? 'pass' : 'fail'}">AA ${passAA   ? '\u2713' : '\u2717'}</span>
+          <span class="nbadge ${passAAA ? 'pass' : 'fail'}">AAA ${passAAA ? '\u2713' : '\u2717'}</span>
+        </div>
+        <div class="notch-ratio">${ratio.toFixed(1)}:1</div>
+      </div>
+      <div class="aa-lg">Aa</div>
+      <div class="aa-sm">Aa</div>
+      <div class="tile-ov">${overlayButtons}</div>
+    </div>`;
+  };
+
+  const computeLayout = () => {
+    const wrap    = document.querySelector('.container');
+    const styles  = getComputedStyle(wrap);
+    const usable  = wrap.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+    const rowHdrW = Math.max(ROW_HDR_MIN, Math.min(ROW_HDR_MAX, usable * ROW_HDR_PCT));
+    const n       = colours.length;
+    const tileW   = Math.max(TILE_MIN, Math.min(TILE_MAX, Math.floor((usable - rowHdrW - GRID_GAP * n) / n)));
+    return { rowHdrW, tileW };
+  };
+
+  const renderMatrix = () => {
+    const n = colours.length;
+    if (n < 2) { showEmptyState(n); return; }
+
+    elEmptyWrap.style.display  = 'none';
+    elMatrixWrap.style.display = 'block';
+
+    const { rowHdrW, tileW } = computeLayout();
+    elMatrix.style.gridTemplateColumns = `${rowHdrW}px repeat(${n}, ${tileW}px)`;
+
+    const headerRow = [
+      `<div style="width:${rowHdrW}px;height:36px"></div>`,
+      ...colours.map(colour =>
+        `<div class="col-hdr" style="background:${colour};color:${readableInk(colour)}">${colour}</div>`
+      )
+    ].join('');
+
+    const rows = colours.map((fg, fi) => {
+      const rowHeader = `<div class="row-hdr" style="background:${fg};color:${readableInk(fg)};height:${tileW}px">${fg}</div>`;
+      const tiles = colours.map((_, bi) =>
+        fi === bi
+          ? `<div class="tile blank" style="height:${tileW}px"></div>`
+          : buildTile(fi, bi, tileW)
+      ).join('');
+      return rowHeader + tiles;
+    }).join('');
+
+    elMatrix.innerHTML = headerRow + rows;
+
+    /* Delegate overlay button events */
+    elMatrix.addEventListener('click', handleMatrixClick, { once: true });
+    elMatrix.addEventListener('click', handleMatrixClick);
+  };
+
+  const handleMatrixClick = e => {
+    const btn = e.target.closest('.ov-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    const { fi, bi } = btn.dataset;
+    if (btn.classList.contains('ov-dis')) { snapshot(); disabled.add(tileKey(fi, bi)); render(); }
+    else if (btn.classList.contains('ov-ena')) { snapshot(); disabled.delete(tileKey(fi, bi)); render(); }
+    else if (btn.classList.contains('ov-imp')) { openModal(+fi, +bi); }
+  };
+
+  /* ── Actions bar ── */
+  const renderActions = () => {
+    elBtnUndo.style.display   = history.length     ? 'inline-block' : 'none';
+    elBtnExport.style.display = colours.length >= 2 ? 'inline-block' : 'none';
+  };
+
+  /* ── Full render ── */
+  const render = () => { renderChips(); renderMatrix(); renderActions(); };
+
+  /* ── Input handler ── */
+  const HEX_RE = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
+
+  elInput.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && e.target.value === '' && colours.length) {
+      snapshot(); colours.pop(); render(); return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+
+    const raw = e.target.value.trim();
+    e.target.value = '';
+    if (!raw) return;
+
+    let didAdd = false;
+    raw.split(',').forEach(token => {
+      let value = token.trim();
+      if (!value) return;
+      if (value[0] !== '#') value = '#' + value;
+      if (!HEX_RE.test(value)) return;
+      const upper = value.toUpperCase();
+      if (colours.some(c => c.toUpperCase() === upper)) return;
+      if (!didAdd) { snapshot(); didAdd = true; }
+      colours.push(upper);
+    });
+    render();
+  });
+
+  /* ── Undo ── */
+  elBtnUndo.addEventListener('click', () => {
+    if (!history.length) return;
+    const prev = history.pop();
+    colours  = prev.colours.slice();
+    disabled = new Set(prev.disabled);
+    render();
+  });
+
+  /* ── Resize ── */
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderMatrix, 120);
+  });
+
+  /* ── PDF Export ── */
+  const PDF_MARGIN = 14;
+  const PDF_GAP    = 1.5;
+
+  const pdfBgFill = doc => {
+    doc.setFillColor(17, 17, 17);
+    doc.rect(0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight(), 'F');
+  };
+
+  const pdfInk = hex => readableInk(hex) === '#fff' ? [255, 255, 255] : [17, 17, 17];
+
+  elBtnExport.addEventListener('click', () => {
+    const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pw  = doc.internal.pageSize.getWidth();
+    const ph  = doc.internal.pageSize.getHeight();
+    const n   = colours.length;
+
+    /* Page 1 – Matrix */
+    pdfBgFill(doc);
+    doc.setTextColor(255, 255, 255); doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+    doc.text('Colour Contrast Checker', PDF_MARGIN, 16);
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(156, 163, 175);
+    doc.text(`${n} colours  ·  ${n * n - n} combinations`, PDF_MARGIN, 22);
+
+    const rowHdrW = 22;
+    const tileW   = Math.min(30, Math.floor((pw - PDF_MARGIN * 2 - rowHdrW - (n - 1) * PDF_GAP) / n));
+    const startY  = 30;
+
+    colours.forEach((colour, ci) => {
+      const rgb = hexToRgb(colour);
+      const cx  = PDF_MARGIN + rowHdrW + PDF_GAP + ci * (tileW + PDF_GAP);
+      doc.setFillColor(...rgb); doc.roundedRect(cx, startY, tileW, 8, 1, 1, 'F');
+      doc.setFontSize(5); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...pdfInk(colour));
+      doc.text(colour, cx + tileW / 2, startY + 5.2, { align: 'center' });
+    });
+
+    colours.forEach((fg, fi) => {
+      const fy   = startY + 10 + fi * (tileW + PDF_GAP);
+      const fRgb = hexToRgb(fg);
+      doc.setFillColor(...fRgb); doc.roundedRect(PDF_MARGIN, fy, rowHdrW, tileW, 1, 1, 'F');
+      doc.setFontSize(5); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...pdfInk(fg));
+      doc.text(fg, PDF_MARGIN + rowHdrW / 2, fy + tileW / 2 + 1.5, { align: 'center' });
+
+      colours.forEach((bg, bi) => {
+        if (fi === bi) return;
+        const bRgb = hexToRgb(bg);
+        const ratio = contrastRatio(fg, bg);
+        const passAA = ratio >= AA_THRESHOLD, passAAA = ratio >= AAA_THRESHOLD;
+        const bx = PDF_MARGIN + rowHdrW + PDF_GAP + bi * (tileW + PDF_GAP);
+
+        doc.setFillColor(...bRgb); doc.roundedRect(bx, fy, tileW, tileW, 1.5, 1.5, 'F');
+        doc.setFillColor(17, 17, 17); doc.roundedRect(bx + tileW - 16, fy, 16, 6, 0, 1.5, 'F');
+        doc.setFontSize(3.8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+        doc.text(`${ratio.toFixed(1)}:1`, bx + tileW - 8, fy + 2.6, { align: 'center' });
+        doc.setFontSize(3);
+        doc.setTextColor(...(passAA  ? [74, 222, 128] : [248, 113, 113])); doc.text(`AA ${passAA   ? '✓' : '✗'}`, bx + tileW - 14, fy + 5.4);
+        doc.setTextColor(...(passAAA ? [74, 222, 128] : [248, 113, 113])); doc.text(`AAA ${passAAA ? '✓' : '✗'}`, bx + tileW - 8,  fy + 5.4);
+
+        const ffRgb = hexToRgb(fg);
+        doc.setTextColor(...ffRgb); doc.setFontSize(tileW * 0.35); doc.setFont('helvetica', 'bold');
+        doc.text('Aa', bx + tileW / 2, fy + tileW * 0.62, { align: 'center' });
+      });
+    });
+
+    /* Page 2 – Overview */
+    doc.addPage(); pdfBgFill(doc);
+    doc.setTextColor(255, 255, 255); doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+    doc.text('Combinations Overview', PDF_MARGIN, 16);
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(156, 163, 175);
+    doc.text(`AA ≥ ${AA_THRESHOLD}:1  ·  AAA ≥ ${AAA_THRESHOLD}:1`, PDF_MARGIN, 22);
+
+    const allCombinations = colours.flatMap((fg, fi) =>
+      colours.flatMap((bg, bi) => {
+        if (fi === bi) return [];
+        const ratio = contrastRatio(fg, bg);
+        return [{ fg, bg, ratio, passAA: ratio >= AA_THRESHOLD, passAAA: ratio >= AAA_THRESHOLD }];
+      })
+    );
+    const compliant    = allCombinations.filter(c => c.passAA);
+    const nonCompliant = allCombinations.filter(c => !c.passAA);
+
+    const cardW   = 40, cardH = 24;
+    const perRow  = Math.floor((pw - PDF_MARGIN * 2) / (cardW + 3));
+
+    const drawSection = (title, items, startY, labelRgb) => {
+      doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...labelRgb);
+      doc.text(`${title} (${items.length})`, PDF_MARGIN, startY);
+
+      let x = PDF_MARGIN, y = startY + 6, count = 0;
+      items.forEach(item => {
+        const fRgb = hexToRgb(item.fg), bRgb = hexToRgb(item.bg);
+        doc.setFillColor(...bRgb); doc.roundedRect(x, y, cardW, cardH, 2, 2, 'F');
+        doc.setFillColor(item.passAA ? 20 : 64, item.passAA ? 83 : 10, item.passAA ? 45 : 10);
+        doc.roundedRect(x, y, cardW, 5.5, 2, 2, 'F');
+        doc.rect(x, y + 2.5, cardW, 3, 'F');
+
+        doc.setFontSize(3.5); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...(item.passAA  ? [74, 222, 128] : [248, 113, 113])); doc.text(`${item.passAA  ? '✓' : '✗'} AA`,  x + 2, y + 3.8);
+        doc.setTextColor(...(item.passAAA ? [74, 222, 128] : [248, 113, 113])); doc.text(`${item.passAAA ? '✓' : '✗'} AAA`, x + cardW / 2, y + 3.8);
+        doc.setTextColor(...(item.passAA  ? [74, 222, 128] : [248, 113, 113])); doc.text(`${item.ratio.toFixed(1)}:1`, x + cardW - 2, y + 3.8, { align: 'right' });
+
+        doc.setTextColor(...fRgb); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+        doc.text('Aa', x + cardW / 2, y + 16, { align: 'center' });
+        doc.setFontSize(3.5); doc.setFont('helvetica', 'normal');
+        doc.text(item.fg, x + 2, y + cardH - 4);
+        doc.text(`on ${item.bg}`, x + 2, y + cardH - 1.5);
+
+        count++;
+        x += cardW + 3;
+        if (count % perRow === 0) { x = PDF_MARGIN; y += cardH + 3; }
+        if (y + cardH > ph - 10) { doc.addPage(); pdfBgFill(doc); y = PDF_MARGIN; x = PDF_MARGIN; count = 0; }
+      });
+
+      return y + (count % perRow !== 0 ? cardH + 8 : 8);
+    };
+
+    const nextY = drawSection('✓ Compliant',     compliant,    30, [74, 222, 128]);
+    const nonCompliantY = nextY + 4;
+    if (nonCompliantY + 30 < ph) drawSection('✗ Non-Compliant', nonCompliant, nonCompliantY, [248, 113, 113]);
+    else { doc.addPage(); pdfBgFill(doc); drawSection('✗ Non-Compliant', nonCompliant, PDF_MARGIN, [248, 113, 113]); }
+
+    doc.save('colour-contrast.pdf');
+  });
+
+  /* ── Modal ── */
+  const SUGGESTION_GROUPS = [
+    { label: 'AA',  cls: 'aa',  min: AA_THRESHOLD  },
+    { label: 'AAA', cls: 'aaa', min: AAA_THRESHOLD }
+  ];
+
+  const openModal = (fgIndex, bgIndex) => {
+    modal = { fgIndex, bgIndex, target: 'fg', picked: null };
+    elModalBg.classList.add('open');
+    document.querySelectorAll('.m-tab').forEach(t => t.classList.toggle('on', t.dataset.t === 'fg'));
+    buildModal();
+  };
+
+  const closeModal = () => elModalBg.classList.remove('open');
+
+  const buildModal = () => {
+    const fg = colours[modal.fgIndex], bg = colours[modal.bgIndex];
+    elModalSub.textContent = `${fg} on ${bg}  ·  Ratio: ${contrastRatio(fg, bg).toFixed(1)}:1`;
+    elModalPrev.style.background = bg;
+    elModalPrev.style.color = fg;
+
+    elSuggWrap.innerHTML = SUGGESTION_GROUPS.map(group => {
+      const lighter = findSuggestion(fg, bg, 'lighter', modal.target, group.min);
+      const darker  = findSuggestion(fg, bg, 'darker',  modal.target, group.min);
+
+      const suggCard = (label, result) => result
+        ? `<div class="m-sugg" data-hex="${result.hex}">
+             <div class="ms-lbl">${label}</div>
+             <div class="ms-swatch" style="background:${result.hex}"></div>
+             <div class="ms-hex">${result.hex}</div>
+             <div class="ms-ratio">${result.ratio.toFixed(1)}:1</div>
+             <span class="ms-badge ${group.cls}">${group.label} Pass</span>
+           </div>`
+        : `<div class="m-sugg"><div class="ms-lbl">${label}</div><div class="ms-none">No match found</div></div>`;
+
+      return `<div class="sugg-group">
+        <div class="sugg-group-lbl ${group.cls}">${group.label} Compliant suggestions</div>
+        <div class="m-suggs">${suggCard('Lighter', lighter)}${suggCard('Darker', darker)}</div>
+      </div>`;
+    }).join('');
+
+    elSuggWrap.querySelectorAll('.m-sugg[data-hex]').forEach(el => {
+      el.addEventListener('click', () => {
+        elSuggWrap.querySelectorAll('.m-sugg').forEach(s => s.classList.remove('picked'));
+        el.classList.add('picked');
+        modal.picked = el.dataset.hex;
+        const newFg = modal.target === 'fg' ? modal.picked : fg;
+        const newBg = modal.target === 'bg' ? modal.picked : bg;
+        elModalPrev.style.background = newBg;
+        elModalPrev.style.color = newFg;
+        elBtnUpdate.disabled = false;
+      });
+    });
+
+    elBtnUpdate.disabled = true;
+  };
+
+  document.querySelectorAll('.m-tab').forEach(tab =>
+    tab.addEventListener('click', () => {
+      modal.target = tab.dataset.t;
+      modal.picked = null;
+      document.querySelectorAll('.m-tab').forEach(t => t.classList.toggle('on', t === tab));
+      buildModal();
+    })
+  );
+
+  $('modalX').addEventListener('click', closeModal);
+  $('mCancel').addEventListener('click', closeModal);
+  elModalBg.addEventListener('click', e => { if (e.target === elModalBg) closeModal(); });
+
+  elBtnUpdate.addEventListener('click', () => {
+    if (!modal.picked) return;
+    snapshot();
+    if (modal.target === 'fg') colours[modal.fgIndex] = modal.picked;
+    else colours[modal.bgIndex] = modal.picked;
+    closeModal();
+    render();
+  });
+
+  /* ── Bug fix: remove duplicate event listener registration ── */
+  // Matrix click handler was accidentally registered twice in earlier draft — now uses a single delegated listener set in renderMatrix.
+
+  /* ── Init ── */
+  render();
+})();
+</script>
+</body>
+</html>
