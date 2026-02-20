@@ -184,7 +184,7 @@
 
   /* ── State ── */
   let colours = [];
-  let history = [];
+  let historyStack = [];
   let disabled = new Set();
   let modal = { fgIndex: 0, bgIndex: 0, target: 'fg', picked: null };
   let resizeTimer = null;
@@ -235,8 +235,28 @@
     return null;
   };
 
+  /* ── URL state ── */
+  const syncURL = () => {
+    try {
+      const params = colours.length ? `?colours=${colours.map(c => c.replace('#', '')).join(',')}` : location.pathname;
+      history.replaceState(null, '', params);
+    } catch {
+      // Silently ignored in sandboxed environments (e.g. iframes)
+    }
+  };
+
+  const loadFromURL = () => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get('colours');
+    if (!raw) return;
+    raw.split(',').forEach(token => {
+      const value = (token.trim().startsWith('#') ? token.trim() : '#' + token.trim()).toUpperCase();
+      if (HEX_RE.test(value) && !colours.includes(value)) colours.push(value);
+    });
+  };
+
   /* ── History ── */
-  const snapshot = () => history.push({ colours: [...colours], disabled: new Set(disabled) });
+  const snapshot = () => historyStack.push({ colours: [...colours], disabled: new Set(disabled) });
 
   /* ── Chips ── */
   const renderChips = () => {
@@ -360,12 +380,12 @@
 
   /* ── Actions bar ── */
   const renderActions = () => {
-    elBtnUndo.style.display   = history.length     ? 'inline-block' : 'none';
-    elBtnExport.style.display = colours.length >= 2 ? 'inline-block' : 'none';
+    elBtnUndo.style.display   = historyStack.length   ? 'inline-block' : 'none';
+    elBtnExport.style.display = colours.length >= 2   ? 'inline-block' : 'none';
   };
 
   /* ── Full render ── */
-  const render = () => { renderChips(); renderMatrix(); renderActions(); };
+  const render = () => { renderChips(); renderMatrix(); renderActions(); syncURL(); };
 
   /* ── Input handler ── */
   const HEX_RE = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
@@ -397,8 +417,8 @@
 
   /* ── Undo ── */
   elBtnUndo.addEventListener('click', () => {
-    if (!history.length) return;
-    const prev = history.pop();
+    if (!historyStack.length) return;
+    const prev = historyStack.pop();
     colours  = prev.colours.slice();
     disabled = new Set(prev.disabled);
     render();
@@ -620,6 +640,7 @@
   // Matrix click handler was accidentally registered twice in earlier draft — now uses a single delegated listener set in renderMatrix.
 
   /* ── Init ── */
+  loadFromURL();
   render();
 })();
 </script>
